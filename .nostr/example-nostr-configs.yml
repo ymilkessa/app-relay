@@ -1,0 +1,15 @@
+# You should create a file in ./nostr/nostr-configs.yml with the same format as below.
+# This is just an example.
+
+event:
+  kinds: [1, 4]
+  tags:
+    clientPubkeys: []
+
+app:
+  appPubkeys: []
+  internalPort: 3000
+  numberOfWorkers: 2
+
+relay:
+  url: "wss://relay.example.com"
