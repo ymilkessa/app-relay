@@ -1,4 +1,4 @@
-import { ConnectionManagerInterface } from "./types/connection";
+import { ConnectionManagerInterface } from "./types/components";
 
 /**
  * Define a singleton class that includes a map from public keys to ConnectionManagerInterface instances.
@@ -25,8 +25,8 @@ export class AllConnections {
     this.connections.set(pubkey, connection);
   }
 
-  public async sendToApp(appPubkey: string, message: string) {
-    const connection = this.connections.get(appPubkey);
+  public async sendToUser(userPubkey: string, message: string) {
+    const connection = this.connections.get(userPubkey);
     if (connection) {
       await connection.send(message);
     }

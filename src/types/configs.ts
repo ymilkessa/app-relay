@@ -4,6 +4,10 @@ export interface AppConfigs {
   numberOfWorkers: number;
 }
 
+export interface NostrBotConfigs {
+  privateKey: string;
+}
+
 export interface RelayConfigs {
   url: string;
 }
@@ -18,5 +22,6 @@ export interface EventConfigs {
 export interface Configs {
   event: EventConfigs;
   app: AppConfigs;
+  bot: NostrBotConfigs;
   relay: RelayConfigs;
 }
