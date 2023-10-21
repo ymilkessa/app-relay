@@ -1,9 +1,10 @@
 import { WebSocket } from "ws";
-import { ConnectionManagerInterface } from "./types/connection";
+import { ConnectionManagerInterface, HostBlackBox } from "./types/components";
 import { EventData, EventFromClient } from "./types/nostrData";
 import { isSignatureValid } from "./utils/eventUtils";
 import { Configs } from "./types/configs";
 import { AllConnections } from "./connectionsMap";
+import { RelayResponseTypes } from "nostr-bot-app";
 
 enum ConnectionStatus {
   CONNECTED,
@@ -17,6 +18,7 @@ export class WsConnectionManager implements ConnectionManagerInterface {
   private userPubkey: string;
   private identifier: string;
   private connMapsRef: AllConnections;
+  private hostInterface: HostBlackBox = () => {};
 
   public constructor(
     private readonly websocket: WebSocket,
@@ -51,53 +53,10 @@ export class WsConnectionManager implements ConnectionManagerInterface {
       }
       this.userPubkey = eventObj.pubkey;
 
-      switch (this.status) {
-        case ConnectionStatus.CONNECTED:
-          // Once the opening message is received, (`Hello ${configs.relay.url}`), send a random string.
-          const contentWords = eventObj.content.split(" ");
-          if (
-            contentWords.length > 1 &&
-            contentWords[0].toLowerCase().trim() === "hello" &&
-            contentWords[1].trim() === this.configs.relay.url
-          ) {
-            this.promptString =
-              Math.random().toString(36).substring(2, 15) +
-              Math.random().toString(36).substring(2, 15);
-            await this.sendOkMessage(eventObj, true, this.promptString);
-            this.status = ConnectionStatus.PROMPT_SENT;
-          } else {
-            await this.sendOkMessage(
-              eventObj,
-              false,
-              "Invalid opening message sent."
-            );
-          }
-          break;
-
-        case ConnectionStatus.PROMPT_SENT:
-          // If the random prompt is received as a signed message, accept the user.
-          if (eventObj.content === this.promptString) {
-            await this.sendOkMessage(eventObj, true);
-            this.connMapsRef.addConnection(this.userPubkey, this);
-            this.connMapsRef.removeUnverifiedConnection(this.identifier);
-            this.identifier = this.userPubkey;
-            this.status = ConnectionStatus.USER_VERIFIED;
-          } else {
-            await this.sendOkMessage(
-              eventObj,
-              false,
-              "Invalid prompt response sent."
-            );
-          }
-          break;
-        case ConnectionStatus.USER_VERIFIED:
-          const recipientPubkey = this.getFirstRecipient(eventObj);
-          if (recipientPubkey) {
-            await this.connMapsRef.sendToApp(recipientPubkey, rawMessage);
-          }
-
-        default:
-          break;
+      const result = await this.hostInterface(eventObj);
+      if (result) {
+        await this.sendOkMessage(eventObj, true);
+        await this.sendEventToUser(result);
       }
     } catch (err) {
       console.log(err);
@@ -119,12 +78,18 @@ export class WsConnectionManager implements ConnectionManagerInterface {
     await this.websocket.send(okMessageString);
   }
 
+  /**
+   * Send back an event. Set the subscription id to just be "", since there are no
+   * subscriptions in this case.
+   */
+  private sendEventToUser(event: EventData) {
+    const eventMessage = [RelayResponseTypes.EVENT, "", event];
+    this.websocket.send(JSON.stringify(eventMessage, null, 2));
+  }
+
   private isEventMessageRelevant(event: EventData): boolean {
     if (!this.configs.event.kinds.includes(event.kind)) {
       return false;
-    }
-    if (this.configs.app.appPubkeys.includes(event.pubkey)) {
-      return true;
     }
     const recipient = this.getFirstRecipient(event);
     if (recipient && this.configs.app.appPubkeys.includes(recipient)) {
@@ -143,6 +108,10 @@ export class WsConnectionManager implements ConnectionManagerInterface {
       }
     }
     return null;
+  }
+
+  public setHostInterface(hostFunc: HostBlackBox) {
+    this.hostInterface = hostFunc;
   }
 
   public getIdentifier(): string {
